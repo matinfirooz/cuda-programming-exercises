@@ -1,0 +1,6 @@
+#include "cuda_utils.cuh"
+#include <vector>
+#include <iostream>
+#include <limits>
+__global__ void row_softmax(const float* x,float* y,int rows,int cols){extern __shared__ float sm[];int row=blockIdx.x,t=threadIdx.x;if(row>=rows)return;float m=-CUDART_INF_F;for(int c=t;c<cols;c+=blockDim.x)m=fmaxf(m,x[row*cols+c]);sm[t]=m;__syncthreads();for(int s=blockDim.x/2;s;s>>=1){if(t<s)sm[t]=fmaxf(sm[t],sm[t+s]);__syncthreads();}m=sm[0];float sum=0;for(int c=t;c<cols;c+=blockDim.x)sum+=expf(x[row*cols+c]-m);sm[t]=sum;__syncthreads();for(int s=blockDim.x/2;s;s>>=1){if(t<s)sm[t]+=sm[t+s];__syncthreads();}sum=sm[0];for(int c=t;c<cols;c+=blockDim.x)y[row*cols+c]=expf(x[row*cols+c]-m)/sum;}
+int main(){int R=257,C=1000,n=R*C;std::vector<float>x(n),y(n);for(int i=0;i<n;i++)x[i]=sinf(i*.013f)*7;float *dx,*dy;CUDA_CHECK(cudaMalloc(&dx,n*4));CUDA_CHECK(cudaMalloc(&dy,n*4));CUDA_CHECK(cudaMemcpy(dx,x.data(),n*4,cudaMemcpyHostToDevice));int block=256;row_softmax<<<R,block,block*sizeof(float)>>>(dx,dy,R,C);check_kernel("row_softmax");CUDA_CHECK(cudaMemcpy(y.data(),dy,n*4,cudaMemcpyDeviceToHost));for(int r=0;r<R;r++){double s=0;for(int c=0;c<C;c++)s+=y[r*C+c];if(std::fabs(s-1.0)>1e-4){std::cerr<<"row sum fail\n";return 1;}}CUDA_CHECK(cudaFree(dx));CUDA_CHECK(cudaFree(dy));std::cout<<"PASS\n";}

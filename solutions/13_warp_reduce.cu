@@ -1,0 +1,6 @@
+#include "cuda_utils.cuh"
+#include <vector>
+#include <iostream>
+__inline__ __device__ float warp_sum(float v){for(int o=warpSize/2;o>0;o>>=1)v+=__shfl_down_sync(0xffffffff,v,o);return v;}
+__global__ void reduce_warp(const float* x,float* blockSums,int n){__shared__ float warpSums[32];int t=threadIdx.x;int i=blockIdx.x*blockDim.x+t;float v=0;for(int j=i;j<n;j+=gridDim.x*blockDim.x)v+=x[j];v=warp_sum(v);int lane=t&31,warp=t>>5;if(lane==0)warpSums[warp]=v;__syncthreads();v=(t<(blockDim.x+31)/32)?warpSums[lane]:0;if(warp==0)v=warp_sum(v);if(t==0)blockSums[blockIdx.x]=v;}
+int main(){int N=1<<20,grid=128,block=256;std::vector<float>x(N),partials(grid);double ref=0;for(int i=0;i<N;i++){x[i]=(i%17)*.01f;ref+=x[i];}float *dx,*dp;CUDA_CHECK(cudaMalloc(&dx,N*4));CUDA_CHECK(cudaMalloc(&dp,grid*4));CUDA_CHECK(cudaMemcpy(dx,x.data(),N*4,cudaMemcpyHostToDevice));reduce_warp<<<grid,block>>>(dx,dp,N);check_kernel("reduce_warp");CUDA_CHECK(cudaMemcpy(partials.data(),dp,grid*4,cudaMemcpyDeviceToHost));double sum=0;for(float v:partials)sum+=v;std::cout<<"GPU="<<sum<<" CPU="<<ref<<"\n";CUDA_CHECK(cudaFree(dx));CUDA_CHECK(cudaFree(dp));if(std::fabs(sum-ref)>.001*std::fabs(ref))return 1;std::cout<<"PASS\n";}

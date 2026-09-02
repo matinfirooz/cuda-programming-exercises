@@ -1,0 +1,6 @@
+#include "cuda_utils.cuh"
+#include <vector>
+#include <iostream>
+constexpr int R=2; constexpr int K=2*R+1; __constant__ float c_filter[K];
+__global__ void conv1d(const float* in,float* out,int n){extern __shared__ float s[];int t=threadIdx.x,g=blockIdx.x*blockDim.x+t;int base=blockIdx.x*blockDim.x-R;for(int i=t;i<blockDim.x+2*R;i+=blockDim.x){int gi=base+i;s[i]=(gi>=0&&gi<n)?in[gi]:0;}__syncthreads();if(g<n){float sum=0;for(int k=0;k<K;k++)sum+=s[t+k]*c_filter[k];out[g]=sum;}}
+int main(){int N=10003;std::vector<float>x(N),y(N),ref(N);float hF[K]={1,2,3,2,1};for(int i=0;i<N;i++)x[i]=(i%23)*.1f;for(int i=0;i<N;i++){float s=0;for(int k=-R;k<=R;k++){int j=i+k;if(j>=0&&j<N)s+=x[j]*hF[k+R];}ref[i]=s;}float *dx,*dy;CUDA_CHECK(cudaMalloc(&dx,N*4));CUDA_CHECK(cudaMalloc(&dy,N*4));CUDA_CHECK(cudaMemcpy(dx,x.data(),N*4,cudaMemcpyHostToDevice));CUDA_CHECK(cudaMemcpyToSymbol(c_filter,hF,sizeof(hF)));int block=256;conv1d<<<(N+block-1)/block,block,(block+2*R)*sizeof(float)>>>(dx,dy,N);check_kernel("conv1d");CUDA_CHECK(cudaMemcpy(y.data(),dy,N*4,cudaMemcpyDeviceToHost));for(int i=0;i<N;i++)if(!nearly_equal(y[i],ref[i],1e-4f,1e-4f))return 1;CUDA_CHECK(cudaFree(dx));CUDA_CHECK(cudaFree(dy));std::cout<<"PASS\n";}

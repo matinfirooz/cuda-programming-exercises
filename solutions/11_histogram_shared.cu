@@ -1,0 +1,5 @@
+#include "cuda_utils.cuh"
+#include <vector>
+#include <iostream>
+__global__ void histogram(const unsigned char* data,unsigned int* hist,int n){__shared__ unsigned int local[256];for(int i=threadIdx.x;i<256;i+=blockDim.x)local[i]=0;__syncthreads();for(int i=blockIdx.x*blockDim.x+threadIdx.x;i<n;i+=blockDim.x*gridDim.x)atomicAdd(&local[data[i]],1);__syncthreads();for(int i=threadIdx.x;i<256;i+=blockDim.x)atomicAdd(&hist[i],local[i]);}
+int main(){int N=1<<22;std::vector<unsigned char>x(N);std::vector<unsigned int>h(256),ref(256);for(int i=0;i<N;i++){x[i]=(unsigned char)((i*37+i/7)&255);ref[x[i]]++;}unsigned char* dx;unsigned int* dh;CUDA_CHECK(cudaMalloc(&dx,N));CUDA_CHECK(cudaMalloc(&dh,256*sizeof(unsigned int)));CUDA_CHECK(cudaMemcpy(dx,x.data(),N,cudaMemcpyHostToDevice));CUDA_CHECK(cudaMemset(dh,0,256*sizeof(unsigned int)));histogram<<<256,256>>>(dx,dh,N);check_kernel("histogram");CUDA_CHECK(cudaMemcpy(h.data(),dh,256*sizeof(unsigned int),cudaMemcpyDeviceToHost));for(int i=0;i<256;i++)if(h[i]!=ref[i]){std::cerr<<"FAIL bin "<<i<<"\n";return 1;}CUDA_CHECK(cudaFree(dx));CUDA_CHECK(cudaFree(dh));std::cout<<"PASS\n";}
