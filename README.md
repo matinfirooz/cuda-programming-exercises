@@ -35,7 +35,7 @@ cmake --version
 ## Build all reference solutions
 
 ```bash
-git clone [<[github-repository](https://github.com/matinfirooz/cuda-programming-exercises/tree/main)>](https://github.com/matinfirooz/cuda-programming-exercises.git)
+git clone https://github.com/matinfirooz/cuda-programming-exercises.git
 cd cuda-programming-exercises
 cmake -S . -B build
 cmake --build build -j
